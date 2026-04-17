@@ -1,0 +1,13 @@
+{
+  "name": "__PROJECT_NAME__",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Root dev-tooling only (lefthook + harness checks).",
+  "scripts": {
+    "prepare": "lefthook install",
+    "harness": "node scripts/harness-checks.mjs"
+  },
+  "devDependencies": {
+    "lefthook": "1.8.4"
+  }
+}

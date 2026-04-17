@@ -1,0 +1,37 @@
+# Lefthook — pre-commit harness (Phase 1)
+# Docs: https://lefthook.dev
+# Install: npm run prepare (runs lefthook install via root package.json)
+#
+# Este arquivo é um template. Adapte os `glob` e `root` conforme a estrutura
+# do projeto:
+#   - Flat: remova os blocos -client e -server duplicados, deixe só um
+#           com `glob: 'src/**/*.{ts,tsx,js,mjs,vue}'` e sem `root:`.
+#   - Monorepo: ajuste os paths dos apps.
+
+pre-commit:
+  parallel: true
+  commands:
+    biome-server:
+      glob: 'server/src/**/*.{ts,tsx,js,mjs}'
+      root: 'server'
+      # Only lint (format is opt-in via `npm run format`) — avoids CRLF/LF
+      # conflicts in mixed-line-ending repos.
+      run: npx biome lint --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
+    biome-client:
+      glob: 'client/src/**/*.{ts,tsx,js,mjs,vue}'
+      root: 'client'
+      run: npx biome lint --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
+    harness-checks:
+      glob: '**/*.{ts,tsx,js,mjs,vue}'
+      run: node scripts/harness-checks.mjs {staged_files}
+
+pre-push:
+  commands:
+    typecheck-server:
+      glob: 'server/**/*.ts'
+      root: 'server'
+      run: npm run typecheck
+    typecheck-client:
+      glob: 'client/**/*.{ts,tsx,vue}'
+      root: 'client'
+      run: npm run typecheck
