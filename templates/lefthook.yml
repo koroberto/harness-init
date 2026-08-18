@@ -1,37 +1,29 @@
-# Lefthook — pre-commit harness (Phase 1)
+# Lefthook — harness local (pre-commit + pre-push)
 # Docs: https://lefthook.dev
-# Install: npm run prepare (runs lefthook install via root package.json)
+# Install: `npm install` na raiz (o script `prepare` roda `lefthook install`).
 #
-# Este arquivo é um template. Adapte os `glob` e `root` conforme a estrutura
-# do projeto:
-#   - Flat: remova os blocos -client e -server duplicados, deixe só um
-#           com `glob: 'src/**/*.{ts,tsx,js,mjs,vue}'` e sem `root:`.
-#   - Monorepo: ajuste os paths dos apps.
+# ADAPTE apenas os blocos de biome/typecheck à estrutura do projeto (em
+# monorepo, um bloco por app com `root:`). Os comandos do harness são
+# genéricos: escopos e paths vêm do harness.config.json, não daqui.
 
 pre-commit:
   parallel: true
   commands:
-    biome-server:
-      glob: 'server/src/**/*.{ts,tsx,js,mjs}'
-      root: 'server'
-      # Only lint (format is opt-in via `npm run format`) — avoids CRLF/LF
-      # conflicts in mixed-line-ending repos.
-      run: npx biome lint --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
-    biome-client:
-      glob: 'client/src/**/*.{ts,tsx,js,mjs,vue}'
-      root: 'client'
+    biome:
+      glob: '**/*.{ts,tsx,js,mjs,cjs,vue}'
+      # Só lint (format é opt-in via `npm run format`) — evita conflito
+      # CRLF/LF em repositório com line endings mistos.
       run: npx biome lint --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
     harness-checks:
-      glob: '**/*.{ts,tsx,js,mjs,vue}'
-      run: node scripts/harness-checks.mjs {staged_files}
+      glob: '**/*.{ts,tsx,js,mjs,cjs,vue,sh,bash,yml,yaml}'
+      run: node scripts/harness/check.mjs {staged_files}
+    docs-check:
+      glob: '**/*.md'
+      run: node scripts/harness/docs-check.mjs {staged_files}
 
 pre-push:
+  parallel: true
   commands:
-    typecheck-server:
-      glob: 'server/**/*.ts'
-      root: 'server'
-      run: npm run typecheck
-    typecheck-client:
-      glob: 'client/**/*.{ts,tsx,vue}'
-      root: 'client'
+    typecheck:
+      glob: '**/*.{ts,tsx}'
       run: npm run typecheck

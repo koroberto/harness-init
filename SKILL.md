@@ -1,168 +1,227 @@
 ---
 name: harness-init
-description: Instala Harness Engineering (Fowler) + SDD spec-anchored leve (Böckeler) num projeto Node/TS. Ao invocar, a skill detecta a estrutura do projeto, pergunta quais bugs estruturais virar regex no harness, e oferece dois modos de aplicação (direto ou via patch). Use quando o usuário pedir "instalar o harness aqui", "configurar o harness-init", "setar os controles de qualidade neste projeto novo", ou invocar /harness-init.
+description: Instala ou atualiza o harness de qualidade num projeto Node/TS — sensores estruturais (pre-commit + CI), base de conhecimento verificável (AGENTS.md como índice + docs/ como sistema de registro) e SDD spec-anchored leve. O motor é compartilhado entre projetos e atualizável; a adaptação vive em harness.config.json. Use quando o usuário pedir "instalar o harness aqui", "atualizar o harness", "configurar o harness-init", "setar os controles de qualidade neste projeto", ou invocar /harness-init.
 ---
 
-# harness-init — skill de instalação
+# harness-init
 
-Você vai instalar o harness de qualidade (pre-commit + CI + regex anti-padrões + template de spec) **adaptado ao projeto atual**. Siga o fluxo abaixo rigorosamente, confirmando com o usuário a cada passo crítico.
+Instala (ou atualiza) o harness de qualidade **adaptado ao projeto atual**.
+
+## Princípio que rege a skill
+
+O harness tem duas metades, e a separação é o que impede o fork manual:
+
+| Metade | Onde | Quem escreve |
+|---|---|---|
+| **Motor** | `scripts/harness/*.mjs` | A skill. Sobrescrito em todo update |
+| **Configuração** | `harness.config.json` | O projeto. **Nunca** sobrescrever |
+| **Regras do projeto** | `harness.rules.mjs` | O projeto. **Nunca** sobrescrever |
+| **Base de conhecimento** | `AGENTS.md`, `docs/` | O projeto. Só criar se ausente |
+
+Se você se pegar editando um `.mjs` do motor para adaptar ao projeto, pare: ou
+a adaptação cabe no `harness.config.json`, ou é melhoria genérica e deve virar
+mudança na própria skill (não fork local).
 
 ## Pré-requisitos
 
-- Skill roda de dentro do projeto alvo (working directory = raiz do projeto a ser instrumentado).
-- Projeto deve ser Node/TS. Se não for, avise o usuário e pare — a skill ainda não suporta Python/Go (ver [README roadmap](README.md#roadmap-evolução-futura)).
+- Working directory = raiz do projeto alvo.
+- Projeto Node/TS. Outra stack: avise e pare (ver roadmap no README).
+- Projeto com git. Sem git não há hook — avise e pare.
 
-## Fluxo
+## Modo 0 — Decidir install vs update
 
-### Passo 1 — Detectar estrutura
+Verifique se `scripts/harness/` já existe.
+
+- **Não existe** → modo **install** (Passos 1-7).
+- **Existe** → modo **update** (Passo U).
+
+Se o usuário pedir explicitamente um dos modos, respeite o pedido.
+
+---
+
+## Passo U — Update
+
+1. Rode `node scripts/harness/check.mjs --version` para ver motor vs. config.
+2. Leia o [CHANGELOG](CHANGELOG.md) da skill e resuma ao usuário o que muda
+   entre a versão dele e a atual — em linguagem de consequência ("passa a pegar
+   X", "deixa de exigir Y"), não de commit.
+3. Copie de `~/.claude/skills/harness-init/templates/scripts/harness/` **todos**
+   os `.mjs` para `scripts/harness/` do projeto, sobrescrevendo.
+4. **Não toque** em `harness.config.json`, `harness.rules.mjs`, `docs/`,
+   `AGENTS.md`, `CLAUDE.md`, `HARNESS.md`.
+5. Se a nova versão introduziu chave de config nova, **mostre o diff sugerido**
+   e peça confirmação antes de editar o `harness.config.json`. Atualize o campo
+   `harnessVersion` junto.
+6. Rode `node scripts/harness/check.mjs` e `node scripts/harness/docs-check.mjs`.
+   Se aparecerem violações novas em código legado, **não corrija em massa**:
+   explique ao usuário e ofereça (a) baixar a severidade no config, ou (b) abrir
+   issue para pagar aos poucos. O harness impede degradação, não força refactor.
+
+---
+
+## Passo 1 — Detectar estrutura
 
 Em paralelo:
 
 - `Read` do `package.json` da raiz.
-- `Glob` por `**/package.json` (excluir `node_modules`) para detectar monorepo.
-- `Glob` por `**/biome.json`, `**/lefthook.yml`, `**/eslint.config.*` para saber se já existe ferramenta conflitante.
-- `Glob` por `**/.github/workflows/*.yml` para ver CI existente.
+- `Glob` por `**/package.json` (fora de `node_modules`) → flat ou monorepo.
+- `Glob` por `**/biome.json`, `**/lefthook.yml`, `**/eslint.config.*` →
+  ferramenta conflitante já instalada.
+- `Glob` por `.github/workflows/*.yml` → CI existente.
+- `Glob` por `AGENTS.md`, `CLAUDE.md`, `docs/**/*.md` → base de conhecimento
+  existente.
 
-Classifique o projeto como:
-- **flat**: um `package.json` na raiz, código em `src/`.
-- **monorepo**: múltiplos `package.json` (ex: `server/` + `client/`).
+Se já houver Biome/Lefthook, avise e pergunte: **continuar (sobrescreve)** ou
+**abortar**.
 
-Se encontrar Biome/Lefthook já instalados, avise o usuário e pergunte: **continuar (vai sobrescrever)** ou **abortar**.
+Anote os paths reais do código server e client — eles viram `scopes` no
+`harness.config.json`. Em monorepo, um glob por app
+(`apps/api/src/**`, `apps/web/src/**`).
 
-### Passo 2 — Coletar bugs estruturais do time (steerage loop inicial)
+## Passo 2 — Coletar bugs estruturais (steerage loop inicial)
 
-Apresente ao usuário o texto abaixo (em português, conciso):
+Apresente, conciso:
 
-> Quais bugs estruturais o time já teve em produção? Vou transformar cada um em um regex no harness-checks.mjs.
+> Quais bugs estruturais o time já teve em produção? Cada um vira uma regra em
+> `harness.rules.mjs`.
 >
-> Exemplos comuns:
-> - SQL com `${var}` em `raw()` → já incluso por padrão
-> - fetch externo sem timeout → já incluso por padrão
-> - merge de JSONB com spread (perde arrays) → já incluso, mas preciso dos **nomes das colunas JSONB do seu schema**
-> - `console.log` esquecido em prod
-> - migrations sem rollback
-> - uso de `any` em boundary de API
+> Já vêm por padrão no motor: SQL com `${var}` em raw, fetch externo sem
+> timeout, `any` em handler HTTP, `console.log` no server, loop de CI runaway,
+> limite de tamanho de arquivo.
 >
-> Me diz 2-3 que mais doeram no seu time (ou "nenhum" se for projeto novo).
+> Me diz 2-3 que mais doeram (ou "nenhum" se o projeto é novo).
 
-Com base na resposta, prepare o `harness-checks.mjs` customizado (ver Passo 5).
+Para cada bug relatado, escreva a regra com **comentário do incidente**,
+`message` (o que houve) e `fix` (a alternativa correta). Sem o incidente
+registrado, a regra vira folclore e é removida no primeiro falso positivo.
 
-### Passo 3 — Perguntar se inclui SDD spec-anchored
+Pergunte também: **o schema tem coluna JSONB com array?** Se sim, colete os
+nomes e preencha `rules.options["jsonb-array-merge-with-spread"].columns`.
+Sem nomes, deixe a lista vazia — a regra fica inativa em vez de virar ruído.
+
+## Passo 3 — Base de conhecimento
 
 Texto:
 
-> Quer incluir o template `docs/specs/TEMPLATE.md` (SDD spec-anchored leve)? É um markdown único pra features ≥3 arquivos — sem tooling, sem slash commands, só uma âncora.
+> Quer instalar também a base de conhecimento verificável? São 3 coisas:
 >
-> [s/N]
-
-Guarde a resposta em `INCLUDE_SPECS` (boolean).
-
-### Passo 4 — Perguntar modo de aplicação
-
-Texto:
-
-> Modo de aplicação:
+> 1. `AGENTS.md` — índice do repositório (limite de linhas verificado), com
+>    `CLAUDE.md` apontando para ele.
+> 2. `docs/` — índice, TECH_DEBT, QUALITY, plans/.
+> 3. `docs-check` no pre-commit e no CI — links que resolvem, paths de código
+>    citados que existem, doc órfã, frescor.
 >
-> **1. Aplicar direto** — escrevo os arquivos no projeto e te aviso quando rodar `npm install`.
-> **2. Entregar patch** — crio `.harness-proposed/` com tudo lá dentro pra você revisar e mover manualmente.
+> [S/n]
+
+Guarde em `INCLUDE_KB`. Se o projeto **já tem** `CLAUDE.md` com conteúdo real,
+**não sobrescreva**: proponha extrair o índice para `AGENTS.md` e deixar o
+`CLAUDE.md` como ponteiro, mostrando o resultado antes de aplicar.
+
+Pergunte ainda se inclui `docs/specs/TEMPLATE.md` (SDD spec-anchored) →
+`INCLUDE_SPECS`.
+
+## Passo 4 — Modo de aplicação
+
+> **1. Aplicar direto** — escrevo os arquivos e te digo o que rodar.
+> **2. Entregar patch** — crio `.harness-proposed/` para você revisar e mover.
 >
 > [1/2]
 
-Guarde em `MODE`.
+## Passo 5 — Preparar arquivos
 
-### Passo 5 — Preparar arquivos
-
-Baseado nas respostas:
+Fonte: `~/.claude/skills/harness-init/templates/`. Leia cada um e adapte antes
+de escrever.
 
 **Sempre:**
-- `root-package.json` → adapta ao nome do projeto (lê `package.json` existente para o nome).
-- `lefthook.yml` → adapta os `glob` e `root` de acordo com estrutura (flat vs monorepo).
-- `biome.json` → uma cópia por app (monorepo) ou uma só na raiz (flat).
-- `scripts/harness-checks.mjs` → preenche as regex base + adiciona regex dos bugs do Passo 2 na seção `// USER RULES`.
-- `.github/workflows/ci-harness.yml` → adapta os paths dos `grep` ao projeto.
-- `HARNESS.md` → adapta a tabela de sensores e caminhos.
 
-**Se `INCLUDE_SPECS`:**
-- `docs/specs/TEMPLATE.md`
+| Template | Adaptação |
+|---|---|
+| `scripts/harness/*.mjs` | Nenhuma — cópia literal. É o motor |
+| `harness.config.json` | `scopes` com os paths reais; `extensions` conforme a stack; `docs.codeRoots` = raízes de código |
+| `harness.rules.mjs` | Regras do Passo 2 |
+| `lefthook.yml` | Blocos de biome/typecheck conforme flat ou monorepo |
+| `biome.json` | Um por app (monorepo) ou um na raiz (flat) |
+| `.github/workflows/ci-harness.yml` | Nenhuma — já é genérico via `--changed` |
+| `HARNESS.md` | Tabela de sensores e comandos conforme o gerenciador (npm/pnpm) |
+| `root-package.json` | Nome do projeto; **se já existir `package.json`, não sobrescreva** — mostre os `scripts` e `devDependencies` a somar |
 
-**Fontes**: tudo vem de `~/.claude/skills/harness-init/templates/`. Use `Read` para pegar o conteúdo e adapte antes de escrever.
+**Se `INCLUDE_KB`:** `AGENTS.md`, `CLAUDE.md`, `docs/index.md`,
+`docs/TECH_DEBT.md`, `docs/QUALITY.md`, `docs/plans/README.md` +
+`docs/plans/{active,completed}/.gitkeep`.
 
-### Passo 6 — Aplicar
+**Se `INCLUDE_SPECS`:** `docs/specs/TEMPLATE.md`.
 
-**Se `MODE == 1` (aplicar direto):**
-- `Write` cada arquivo no path final (raiz do projeto alvo).
-- Se já existir `package.json` na raiz, **não sobrescreva** — mostre o `scripts` e `devDependencies` a adicionar e peça confirmação de merge manual OU deixe o usuário escolher.
-- Ao final, imprima:
-  ```
-  ✅ harness-init aplicado. Próximos passos:
-    1. npm install    (raiz — ativa lefthook via prepare)
-    2. Commit dos arquivos: git add . && git commit -m "chore: harness engineering setup via harness-init"
-    3. Leia HARNESS.md — política e padrões seguros
-  ```
+**Placeholders a substituir em todos os arquivos:**
 
-**Se `MODE == 2` (entregar patch):**
-- Crie pasta `.harness-proposed/` na raiz.
-- `Write` cada arquivo lá dentro mantendo a estrutura relativa.
-- Ao final, imprima:
-  ```
-  ✅ Patch gerado em .harness-proposed/. Revise e mova o que aprovar:
-    cp -r .harness-proposed/. .
-    rm -rf .harness-proposed
-  Depois: npm install && git add . && git commit
-  ```
+- `__PROJECT_NAME__` → nome do projeto.
+- `__TODAY__` → data de hoje em `YYYY-MM-DD`.
+- Trechos entre `<...>` no `AGENTS.md` e nos docs → preencha com o que você
+  descobriu no Passo 1. Não deixe placeholder cru: índice com lacuna é pior que
+  índice ausente, porque parece pronto.
 
-### Passo 7 — Salvar memória
+Se `INCLUDE_KB` for falso, ajuste o `harness.config.json` removendo o bloco
+`docs` ou apontando `entrypoint`/`index` para o que existe — senão o
+`docs-check` reclama de arquivo que ninguém pediu.
 
-Após aplicar com sucesso, salve uma memória de projeto:
+## Passo 6 — Aplicar e verificar
+
+**Modo 1 (direto):** escreva os arquivos nos paths finais.
+
+**Modo 2 (patch):** escreva em `.harness-proposed/` mantendo a estrutura.
+
+Em ambos os casos, **verifique antes de declarar pronto** (no modo patch,
+rodando de dentro de `.harness-proposed/` se possível):
+
+```bash
+node scripts/harness/check.mjs
+node scripts/harness/docs-check.mjs
+```
+
+Uma instalação limpa tem que passar nos próprios sensores. Se não passar:
+
+- violação em código **legado** → esperado; explique a política (só morde
+  arquivo modificado) e siga.
+- violação nos arquivos que a própria skill acabou de escrever → **conserte
+  antes de entregar**. Isso é bug da instalação, não do projeto.
+
+Mensagem final (modo 1):
+
+```
+✅ harness-init aplicado. Próximos passos:
+  1. npm install         (raiz — ativa o lefthook via prepare)
+  2. Revise AGENTS.md    (troque os <placeholders> pelo real)
+  3. git add . && git commit -m "chore: harness engineering setup"
+  4. Leia HARNESS.md — política, padrões seguros e como adicionar regra nova
+```
+
+## Passo 7 — Salvar memória
+
+Salve/atualize a entidade do projeto no knowledge graph:
 
 ```json
 {
   "name": "PROJECT_<nome>",
   "entityType": "project",
   "observations": [
-    "harness-init aplicado em <data>",
-    "Modo: <direto|patch>",
-    "SDD specs: <incluído|não>",
-    "User rules adicionadas: <lista>"
+    "harness-init <versão> aplicado em <data>",
+    "Modo: <install|update> | <direto|patch>",
+    "Base de conhecimento: <incluída|não>",
+    "Regras de projeto: <lista de ids>"
   ]
 }
 ```
 
-Use `mcp__memory__create_entities` ou `mcp__memory__add_observations` se já existir entidade do projeto.
+## Quando NÃO usar
 
-## Notas sobre adaptação dos templates
-
-### lefthook.yml
-
-Template traz bloco comentado para monorepo (`server/` + `client/`). Para **flat**, remova os blocos `-client` e troque `root: 'intelexia-publisher/server'` por removê-lo (roda na raiz).
-
-### harness-checks.mjs
-
-- `SERVER_GLOB` no topo: ajuste para o path do código server do projeto (ex: `src/` para flat, `server/src/` para monorepo).
-- Regex `jsonb-array-merge-with-spread`: o grupo de captura `(approval_history|plan_snapshot|...)` deve ser **substituído pelas colunas JSONB reais do projeto** (coletadas no Passo 2). Se o usuário não souber, deixe a regex comentada.
-- Seção `// USER RULES` no final do array `RULES`: adicione um objeto por bug relatado.
-
-### biome.json
-
-- Monorepo: copiar um em `server/` e outro em `client/`. Diferença entre eles: `noConsole` = `error` (server) vs `warn` (client).
-- Flat: um só na raiz.
-- `files.ignore` vem vazio — o usuário adiciona arquivos legados ≥2000 linhas depois.
-
-### ci-harness.yml
-
-Paths do `grep` precisam bater com estrutura:
-- Flat: `^src/.*\.(ts|tsx|js|mjs|vue)$`
-- Monorepo: `^<app-path>/src/.*\.(ts|tsx|js|mjs|vue)$` para cada app
-
-## Quando NÃO usar esta skill
-
-- Projeto já tem harness bem estabelecido (Husky + ESLint + testes robustos). Pergunte antes de sobrescrever.
-- Projeto Python/Go/outro — avise e saia.
-- Projeto sem Git — o lefthook depende de git hooks. Avise e saia.
+- Projeto já tem harness robusto e estabelecido — pergunte antes de sobrescrever.
+- Stack não-Node/TS — avise e saia.
+- Projeto sem git — avise e saia.
 
 ## Limitações atuais
 
-- Só Node/TS (ver [README roadmap](README.md)).
-- SDD é apenas template markdown; não há slash commands `/spec-new` etc.
-- Não detecta automaticamente colunas JSONB do schema — depende de o usuário informar.
-- Não instala devDependencies sozinha — sempre sugere `npm install` como passo manual.
+- Só Node/TS.
+- Invariante arquitetural (direção de dependência entre camadas) ainda não tem
+  sensor — está no roadmap como `arch-check`.
+- Não há job recorrente de anti-entropia (GC de drift) — roadmap.
+- SDD é template markdown, sem slash commands.
+- Não instala devDependencies sozinha.

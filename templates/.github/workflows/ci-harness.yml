@@ -1,16 +1,15 @@
-name: CI — Harness (lint + regex checks)
+name: CI — Harness
 
-# ADAPTE: ajuste os paths no `grep` dos jobs abaixo para a estrutura do projeto.
-#   - Flat: ^src/.*\.(ts|tsx|js|mjs|vue)$
-#   - Monorepo: ^(server|client)/src/.*\.(ts|tsx|js|mjs|vue)$
+# Genérico de propósito: os sensores descobrem sozinhos o que mudou no PR e
+# quais arquivos lhes dizem respeito (via harness.config.json). Não há path
+# hardcoded aqui — nada para adaptar por projeto.
 
 on:
   pull_request:
-    branches: [main]
 
 jobs:
-  harness-checks:
-    name: Harness regex checks (changed files)
+  harness:
+    name: Sensores (arquivos alterados no PR)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,22 +18,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Run harness on changed files
-        run: |
-          git fetch origin ${{ github.base_ref }} --depth=1
-          CHANGED=$(git diff --name-only --diff-filter=ACMR origin/${{ github.base_ref }}...HEAD \
-            | grep -E '^(server|client|src)/.*\.(ts|tsx|js|mjs|vue)$' \
-            || true)
-          if [ -z "$CHANGED" ]; then
-            echo "No relevant changes — skipping."
-            exit 0
-          fi
-          echo "Checking:"
-          echo "$CHANGED"
-          echo "$CHANGED" | xargs node scripts/harness-checks.mjs
 
-  lint-changed:
-    name: Biome lint (changed files only)
+      - name: Harness checks
+        run: node scripts/harness/check.mjs --changed origin/${{ github.base_ref }}
+
+      - name: Docs check
+        run: node scripts/harness/docs-check.mjs --changed origin/${{ github.base_ref }}
+
+  lint:
+    name: Biome lint (arquivos alterados no PR)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,25 +35,29 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: List changed files
+
+      - name: Listar arquivos alterados
         id: changed
         run: |
-          git fetch origin ${{ github.base_ref }} --depth=1
-          CHANGED=$(git diff --name-only --diff-filter=ACMR origin/${{ github.base_ref }}...HEAD \
-            | grep -E '^(server|client|src)/.*\.(ts|tsx|js|mjs|vue)$' \
-            || true)
-          echo "files<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGED" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          echo "Changed files:"
+          CHANGED=$(git diff --name-only --diff-filter=ACMR \
+            origin/${{ github.base_ref }}...HEAD \
+            | grep -E '\.(ts|tsx|js|mjs|cjs|vue)$' || true)
+          {
+            echo "files<<EOF"
+            echo "$CHANGED"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "Alterados:"
           echo "$CHANGED"
-      - name: Install Biome
+
+      - name: Instalar Biome
         if: steps.changed.outputs.files != ''
         run: npm install -g @biomejs/biome@1.9.4
-      - name: Lint changed files
+
+      - name: Lint
         if: steps.changed.outputs.files != ''
         run: |
-          echo "${{ steps.changed.outputs.files }}" | while read f; do
+          echo "${{ steps.changed.outputs.files }}" | while read -r f; do
             if [ -n "$f" ]; then
               biome lint "$f" || exit 1
             fi

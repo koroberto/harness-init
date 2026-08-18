@@ -1,0 +1,35 @@
+{
+  "$comment": "Único ponto de adaptação do harness a este projeto. O motor em scripts/harness/ é idêntico em todo projeto e é sobrescrito no update — nunca edite lá. Documentação: HARNESS.md",
+  "harnessVersion": "0.2.0",
+
+  "scopes": {
+    "server": ["src/**"],
+    "client": [],
+    "any": ["scripts/**", ".github/workflows/**"]
+  },
+
+  "extensions": ["ts", "tsx", "js", "mjs", "cjs", "vue", "sh", "bash", "yml", "yaml"],
+
+  "rules": {
+    "disable": [],
+    "severity": {
+      "max-file-lines": "warn"
+    },
+    "options": {
+      "jsonb-array-merge-with-spread": { "columns": [] },
+      "max-file-lines": { "limit": 2000, "scope": "any" }
+    }
+  },
+
+  "docs": {
+    "root": "docs",
+    "index": "docs/index.md",
+    "entrypoint": "AGENTS.md",
+    "entrypointMaxLines": 120,
+    "requireFrontmatter": [],
+    "stalenessDays": 180,
+    "codeRoots": ["src"],
+    "ignore": [],
+    "severity": {}
+  }
+}
