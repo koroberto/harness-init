@@ -18,6 +18,15 @@ Regressão da 0.2.1, encontrada ao rodar a migração completa do besaliel.
   como o marcador já aparecia em código real; era interpretado como "libera
   todas as regras desta linha" em vez de "libera esta regra".
 
+### Adicionado
+
+- **Passo M na skill: migração de 0.1.x.** Projeto vindo da 0.1.0 não é install
+  (já tem harness) nem update (não tem `scripts/harness/`). O passo descreve
+  como classificar as regras existentes entre "o motor já cobre" e "é do
+  projeto", o que vira config, e a triagem obrigatória das violações novas —
+  `harness-allow` para o que é seguro por construção, `TECH_DEBT.md` para o que
+  é problema real.
+
 ## [0.2.1] — 2026-08-18
 
 Correções encontradas ao aplicar a 0.2.0 num repositório real (besaliel, ~690

@@ -28,14 +28,48 @@ mudança na própria skill (não fork local).
 - Projeto Node/TS. Outra stack: avise e pare (ver roadmap no README).
 - Projeto com git. Sem git não há hook — avise e pare.
 
-## Modo 0 — Decidir install vs update
+## Modo 0 — Decidir o modo
 
-Verifique se `scripts/harness/` já existe.
+| Situação | Modo |
+|---|---|
+| `scripts/harness/` existe | **update** (Passo U) |
+| `scripts/harness-checks.mjs` existe (harness 0.1.x) | **migração** (Passo M) |
+| Nenhum dos dois | **install** (Passos 1-7) |
 
-- **Não existe** → modo **install** (Passos 1-7).
-- **Existe** → modo **update** (Passo U).
+Se o usuário pedir explicitamente um modo, respeite o pedido.
 
-Se o usuário pedir explicitamente um dos modos, respeite o pedido.
+---
+
+## Passo M — Migração de 0.1.x
+
+A 0.1.x não separava motor de configuração: o projeto tem uma cópia editada à
+mão de `harness-checks.mjs`, com regras universais e regras do projeto
+misturadas no mesmo array. Migrar é desmontar isso sem perder nada.
+
+1. **Leia o `harness-checks.mjs` do projeto inteiro** e classifique cada regra:
+   - já existe no motor (SQL em raw, fetch sem timeout, `any` no boundary,
+     `console.log` no server, loop de CI) → **descarte**, o motor cobre;
+   - específica do projeto → **vai para `harness.rules.mjs`**, preservando o
+     comentário do incidente. O comentário é o ativo: sem ele a regra vira
+     folclore e morre no primeiro falso positivo.
+2. Anote os globs (`SERVER_GLOBS`, `CLIENT_GLOBS`, `ANY_GLOBS`) e a lista de
+   extensões — viram `scopes` e `extensions` no `harness.config.json`.
+3. Copie o motor, escreva config e regras, e **remova o
+   `scripts/harness-checks.mjs`** (`git rm`).
+4. Atualize `package.json` (script `harness` aponta para
+   `scripts/harness/check.mjs`; some `harness:docs` e `harness:version`),
+   `lefthook.yml` e o workflow de CI — o workflow da 0.1.x tinha `grep` de paths
+   hardcoded que agora sai inteiro.
+5. Siga o Passo 3 (base de conhecimento) e depois o Passo 6 (verificar).
+6. **Espere violações novas.** A 0.2.0 corrigiu uma regex que estava cega e
+   trouxe regras novas. Triagem obrigatória, uma a uma:
+   - seguro por construção (constante, comando que não aceita bind) →
+     `harness-allow: <rule-id>` **com justificativa na linha**;
+   - problema real ainda não corrigido → entrada em `docs/TECH_DEBT.md`, sem
+     silenciar. Débito silenciado treina o time a ignorar a saída do harness.
+
+Nunca corrija em massa código legado nessa etapa: o harness impede degradação,
+não força refactor retroativo.
 
 ---
 
