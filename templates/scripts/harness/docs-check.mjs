@@ -26,6 +26,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
+import { isAllowed } from './allow.mjs';
 import { loadConfig, matchesAny } from './config.mjs';
 import { explicitFiles, git, selectionFromArgv } from './git.mjs';
 import { report } from './report.mjs';
@@ -39,6 +40,31 @@ function toRel(root, p) {
 
 function isExternal(href) {
   return /^([a-z]+:|\/\/|#|<)/i.test(href);
+}
+
+/**
+ * Um link relativo pode ser escrito a partir da pasta do documento (convenção
+ * do GitHub) ou a partir da raiz do repositório (convenção de IDE, onde o link
+ * é clicável no editor). Aceitamos as duas: reportar a segunda como quebrada
+ * seria ruído em massa, e o objetivo do sensor é achar link que não aponta
+ * para lugar nenhum — não impor uma das duas convenções.
+ */
+function linkResolves(root, docRel, href) {
+  const bare = href.split('#')[0].split('?')[0];
+  if (!bare) return true;
+  return existsSync(join(root, dirname(docRel), bare)) || existsSync(join(root, bare));
+}
+
+/**
+ * Normaliza referência de código escrita em crase, tolerando os sufixos de
+ * linha usados no dia a dia: `arquivo.ts:42`, `arquivo.ts:16,63-74`,
+ * `arquivo.ts#L42`.
+ */
+function normalizeCodeRef(raw) {
+  return raw
+    .split('#')[0]
+    .replace(/:\d+(?:[-,]\d+)*$/, '')
+    .replace(/[.,;:)\]]+$/, '');
 }
 
 function parseFrontmatter(content) {
@@ -191,10 +217,8 @@ function main() {
       for (const m of line.matchAll(LINK_RE)) {
         const href = m[1];
         if (isExternal(href)) continue;
-        const bare = href.split('#')[0].split('?')[0];
-        if (!bare) continue;
-        const target = join(root, dirname(rel), bare);
-        if (existsSync(target)) continue;
+        if (linkResolves(root, rel, href)) continue;
+        if (isAllowed(lines, idx, 'broken-link')) continue;
         violations.push({
           file: rel,
           line: idx + 1,
@@ -212,10 +236,15 @@ function main() {
     if ((docs.codeRoots ?? []).length > 0) {
       lines.forEach((line, idx) => {
         for (const m of line.matchAll(CODE_SPAN_RE)) {
-          const raw = m[1].trim().replace(/[.,;:)\]]+$/, '').split('#')[0];
+          const raw = normalizeCodeRef(m[1].trim());
           if (!raw.includes('/') || raw.includes('*') || raw.includes(' ')) continue;
           if (!docs.codeRoots.some((r) => raw === r || raw.startsWith(`${r}/`))) continue;
+          // Dotfile citado em doc costuma ser arquivo de ambiente que o repo
+          // não versiona de propósito (.env.prod, .env.staging). Ausência ali
+          // é o esperado, não sinal de doc apodrecida.
+          if (raw.split('/').pop()?.startsWith('.')) continue;
           if (existsSync(join(root, raw))) continue;
+          if (isAllowed(lines, idx, 'stale-code-reference')) continue;
           violations.push({
             file: rel,
             line: idx + 1,
@@ -235,7 +264,7 @@ function main() {
     const required = docs.requireFrontmatter ?? [];
     if (required.length > 0) {
       const missing = required.filter((k) => !(fm ?? {})[k]);
-      if (missing.length > 0) {
+      if (missing.length > 0 && !isAllowed(lines, 0, 'frontmatter-missing')) {
         violations.push({
           file: rel,
           line: 1,
@@ -252,7 +281,7 @@ function main() {
     // frescor
     if (docs.stalenessDays > 0 && fm?.verified) {
       const age = daysSince(fm.verified);
-      if (age !== null && age > docs.stalenessDays) {
+      if (age !== null && age > docs.stalenessDays && !isAllowed(lines, 0, 'doc-stale')) {
         violations.push({
           file: rel,
           line: 1,

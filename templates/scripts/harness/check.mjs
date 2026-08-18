@@ -18,12 +18,11 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { isAllowed } from './allow.mjs';
 import { ENGINE_VERSION, loadConfig, matchesAny, scopeOf, versionNotice } from './config.mjs';
 import { explicitFiles, git, selectionFromArgv } from './git.mjs';
 import { baseRules } from './rules-base.mjs';
 import { report } from './report.mjs';
-
-const ALLOW_MARKER = /harness-allow(?::\s*([a-z0-9-]+))?/i;
 
 function hasExtension(rel, extensions) {
   const dot = rel.lastIndexOf('.');
@@ -77,17 +76,6 @@ async function loadUserRules(root) {
     console.error(`❌ harness: falha ao carregar harness.rules.mjs — ${err.message}`);
     process.exit(2);
   }
-}
-
-/** Escape hatch: `harness-allow` na linha ou na linha imediatamente acima. */
-function isAllowed(lines, idx, ruleId) {
-  for (const candidate of [lines[idx], lines[idx - 1]]) {
-    if (!candidate) continue;
-    const m = candidate.match(ALLOW_MARKER);
-    if (!m) continue;
-    if (!m[1] || m[1] === ruleId) return true;
-  }
-  return false;
 }
 
 async function main() {

@@ -96,6 +96,7 @@ templates/
 │   ├── rules-base.mjs             ← regras universais
 │   ├── config.mjs                 ← carga de config + glob matching
 │   ├── git.mjs                    ← seleção de arquivos (staged/changed)
+│   ├── allow.mjs                  ← escape hatch `harness-allow`
 │   └── report.mjs                 ← saída legível por agente
 ├── AGENTS.md                      ← índice do repositório (limite verificado)
 ├── CLAUDE.md                      ← ponteiro para AGENTS.md

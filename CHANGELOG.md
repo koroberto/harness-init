@@ -2,6 +2,36 @@
 
 Segue [Keep a Changelog](https://keepachangelog.com/) e [SemVer](https://semver.org/).
 
+## [0.2.1] — 2026-08-18
+
+Correções encontradas ao aplicar a 0.2.0 num repositório real (besaliel, ~690
+arquivos e 51 documentos). Todas eram do motor, nenhuma do projeto.
+
+### Corrigido
+
+- **`harness-allow` só enxergava uma linha acima.** Justificativa em duas ou
+  três linhas de comentário — que é o formato natural para explicar por que o
+  padrão é seguro — não silenciava nada. O marcador agora vale em qualquer
+  linha do bloco de comentário imediatamente acima (até 6 linhas).
+- **`docs-check` anunciava o escape hatch no rodapé mas não o implementava.**
+  Agora honra `harness-allow` (inclusive como comentário HTML em markdown) nas
+  regras `broken-link`, `stale-code-reference`, `frontmatter-missing` e
+  `doc-stale`.
+- **Link relativo à raiz do repositório era reportado como quebrado.** Muita
+  documentação escreve `apps/api/src/x.ts` para o link ficar clicável no
+  editor. Agora o link resolve se apontar para algo real a partir da pasta do
+  documento **ou** da raiz — o sensor procura link morto, não impõe convenção.
+- **Referência de código com sufixo de linha não era reconhecida.**
+  `arquivo.ts:42`, `arquivo.ts:16,63-74` e `arquivo.ts#L42` eram tratados como
+  caminho inexistente.
+- **Dotfile citado em doc virava falso positivo.** `docker/.env.prod` não está
+  versionado de propósito; ausência ali não é doc apodrecida.
+
+### Adicionado
+
+- `scripts/harness/allow.mjs` — escape hatch centralizado, aplicado pelos
+  sensores em vez de repetido regra a regra.
+
 ## [0.2.0] — 2026-08-18
 
 Duas mudanças de fundo: o harness deixa de ser copiado-e-adaptado (vira motor

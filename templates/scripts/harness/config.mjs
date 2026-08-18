@@ -9,7 +9,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 export const CONFIG_FILENAME = 'harness.config.json';
-export const ENGINE_VERSION = '0.2.0';
+export const ENGINE_VERSION = '0.2.1';
 
 const DEFAULTS = {
   harnessVersion: ENGINE_VERSION,
