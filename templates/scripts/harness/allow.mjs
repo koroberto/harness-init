@@ -8,10 +8,16 @@
  * funciona em alguns lugares e não em outros é pior que nenhum.
  */
 
-const MARKER = /harness-allow(?::\s*([a-z0-9-]+))?/i;
+// Aceita `harness-allow: <id>` e `harness-allow <id>` — as duas formas
+// aparecem em código real, e recusar a segunda transformaria supressão
+// existente em erro novo no dia do update.
+const MARKER = /harness-allow(?:[:\s]+([a-z][a-z0-9-]*))?/i;
 
-// Linha que é só comentário — em TS/JS, shell/YAML ou markdown (HTML comment).
-const COMMENT_LINE = /^\s*(\/\/|\/\*|\*|#|<!--)/;
+// Linha que abre um comentário — TS/JS (`//`, `/*`), JSX (`{/*`), shell/YAML
+// (`#`), markdown (`<!--`) — ou que continua/fecha um bloco (`*`, `*/`, `-->`).
+// Sem o caso JSX, o marcador mais comum em React fica invisível.
+const COMMENT_OPEN = /^\s*(\/\/|\/\*|\{\s*\/\*|\*|#|<!--)/;
+const COMMENT_CLOSE = /(-->|\*\/\}?)\s*$/;
 
 const MAX_LOOKBACK = 6;
 
@@ -37,7 +43,7 @@ export function isAllowed(lines, idx, ruleId) {
   for (let i = idx - 1, steps = 0; i >= 0 && steps < MAX_LOOKBACK; i--, steps++) {
     const line = lines[i];
     if (line === undefined) break;
-    if (!COMMENT_LINE.test(line)) break;
+    if (!COMMENT_OPEN.test(line) && !COMMENT_CLOSE.test(line)) break;
     if (markerAllows(line, ruleId)) return true;
   }
   return false;

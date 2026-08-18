@@ -2,6 +2,22 @@
 
 Segue [Keep a Changelog](https://keepachangelog.com/) e [SemVer](https://semver.org/).
 
+## [0.2.2] — 2026-08-18
+
+Regressão da 0.2.1, encontrada ao rodar a migração completa do besaliel.
+
+### Corrigido
+
+- **O lookback do `harness-allow` não reconhecia comentário JSX.** Ao trocar
+  "uma linha acima" por "bloco de comentário acima", a 0.2.1 passou a exigir que
+  a linha começasse com `//`, `/*`, `*`, `#` ou `<!--`. A forma mais comum em
+  React — `{/* harness-allow ... */}` — não casa com nenhuma, então supressão
+  que funcionava antes do update virou erro novo no dia seguinte. Agora
+  reconhece `{/*`, além de linha que fecha bloco (`*/`, `-->`).
+- **Marcador sem dois-pontos não vinculava à regra.** `harness-allow <id>` é
+  como o marcador já aparecia em código real; era interpretado como "libera
+  todas as regras desta linha" em vez de "libera esta regra".
+
 ## [0.2.1] — 2026-08-18
 
 Correções encontradas ao aplicar a 0.2.0 num repositório real (besaliel, ~690

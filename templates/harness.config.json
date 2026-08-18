@@ -1,6 +1,6 @@
 {
   "$comment": "Único ponto de adaptação do harness a este projeto. O motor em scripts/harness/ é idêntico em todo projeto e é sobrescrito no update — nunca edite lá. Documentação: HARNESS.md",
-  "harnessVersion": "0.2.1",
+  "harnessVersion": "0.2.2",
 
   "scopes": {
     "server": ["src/**"],
